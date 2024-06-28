@@ -35,10 +35,11 @@ func SaveData1(path string, data []byte) (err error) {
 }
 
 // SaveData2 a little better approach
-// better:
+// 改进：
 // 1. the rename operation is atomic.
 // If the system crashed before renaming, the original file remains intact, and applications have no problem reading the file concurrently.
-// 2. 何时持久化到磁盘？metadata 可能早于 data 持久化到磁盘，系统崩溃后可能损坏文件。
+// 问题：
+// 1. 何时持久化到磁盘？metadata 可能早于 data 持久化到磁盘，系统崩溃后可能损坏文件。
 func SaveData2(path string, data []byte) (err error) {
 	closeFn := func(c io.Closer) {
 		closeErr := c.Close()
@@ -69,4 +70,44 @@ func SaveData2(path string, data []byte) (err error) {
 
 func randomInt() int {
 	return rand.Intn(100)
+}
+
+// SaveData3 a little better approach than SaveData2
+// 改进：
+// 1. 重命名之前，将数据刷到磁盘上。
+// 问题：
+// 1. metadata 何时刷盘？需要包含该文件的所有目录也刷盘吗？
+// 这似乎是一个兔子洞般深坑，这就是为什么人们在做数据持久化时更青睐于 database 而非 files.
+func SaveData3(path string, data []byte) (err error) {
+	closeFn := func(c io.Closer) {
+		closeErr := c.Close()
+		if err != nil {
+			return
+		}
+		if closeErr != nil {
+			err = closeErr
+			return
+		}
+	}
+
+	tmp := fmt.Sprintf("%s.tmp.%d", path, randomInt())
+	fp, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0664)
+	if err != nil {
+		return err
+	}
+	defer closeFn(fp)
+
+	_, err = fp.Write(data)
+	if err != nil {
+		os.Remove(tmp)
+		return err
+	}
+
+	if err := fp.Sync(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+
+	return os.Rename(tmp, path)
+
 }
