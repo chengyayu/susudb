@@ -1,7 +1,9 @@
 package susudb
 
 import (
+	"fmt"
 	"io"
+	"math/rand"
 	"os"
 )
 
@@ -30,4 +32,41 @@ func SaveData1(path string, data []byte) (err error) {
 
 	_, err = fp.Write(data)
 	return err
+}
+
+// SaveData2 a little better approach
+// better:
+// 1. the rename operation is atomic.
+// If the system crashed before renaming, the original file remains intact, and applications have no problem reading the file concurrently.
+// 2. 何时持久化到磁盘？metadata 可能早于 data 持久化到磁盘，系统崩溃后可能损坏文件。
+func SaveData2(path string, data []byte) (err error) {
+	closeFn := func(c io.Closer) {
+		closeErr := c.Close()
+		if err != nil {
+			return
+		}
+		if closeErr != nil {
+			err = closeErr
+			return
+		}
+	}
+
+	tmp := fmt.Sprintf("%s.tmp.%d", path, randomInt())
+	fp, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0664)
+	if err != nil {
+		return err
+	}
+	defer closeFn(fp)
+
+	_, err = fp.Write(data)
+	if err != nil {
+		os.Remove(tmp)
+		return err
+	}
+
+	return os.Rename(tmp, path)
+}
+
+func randomInt() int {
+	return rand.Intn(100)
 }
