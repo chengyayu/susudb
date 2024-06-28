@@ -111,3 +111,26 @@ func SaveData3(path string, data []byte) (err error) {
 	return os.Rename(tmp, path)
 
 }
+
+// Append-Only Logs
+// 改进：
+// 1.不修改现有数据，也没有重命名操作。
+// 问题：
+// 1.database 使用索引保证查询性能，append-only logs 只有暴力查询才能完成随机顺序范围查询。
+// 2.append-only logs 删除数据只能通过墓碑标记。文件不能永远增长。
+//
+// 我必须说这些问题都有解决方案，否则不会有 LSM-Tree 的存在。但是我们这里讨论的是 B+Tree。
+
+func LogCreate(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0664)
+}
+
+func LogAppend(fp *os.File, line string) error {
+	buf := []byte(line)
+	buf = append(buf, '\n')
+	_, err := fp.Write(buf)
+	if err != nil {
+		return err
+	}
+	return fp.Sync()
+}
